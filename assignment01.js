@@ -167,8 +167,14 @@ app.post('/submitUser', async (req, res) => {
     await userCollection.insertOne({ name, email, password: hashedPassword });
     console.log("User created successfully!");
 
+    // ✅ Set session after successful signup
+    req.session.authenticated = true;
+    req.session.name = name;
+    req.session.cookie.maxAge = expireTime;
+
     res.redirect('/members');
 });
+
 
 app.get('/signupSubmit', (req, res) => {
     let missingFields = req.query.missing;
