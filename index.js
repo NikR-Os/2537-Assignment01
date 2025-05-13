@@ -193,7 +193,7 @@ app.get('/logout', (req, res) => {
 // Middleware to protect admin routes
 function isAdmin(req, res, next) {
     if (!req.session.authenticated) return res.redirect('login');
-    if (req.session.type !== 'admin') return res.status(403).send('Forbidden: Not authorized');
+    if (req.session.type !== 'admin') return res.status(403).send('403 - Forbidden: Not authorized');
     next();
 }
 
