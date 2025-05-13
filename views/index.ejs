@@ -1,0 +1,34 @@
+<%- include("templates/header", {name: name, userAuth: userAuth, username: username, navLinks: navLinks}); %>
+
+    <div class="container my-5">
+        <% if (!userAuth) { %>
+
+
+            <h1>The simplest Homepage</h1>
+            <form action="/login" method="get">
+                <div class="form-group">
+                    <button class="btn btn-primary my-1" type="submit">Log In</button>
+                </div>
+            </form>
+            <form action="/createUser" method="get">
+                <div class="form-group">
+                    <button class="btn btn-primary my-1" type="submit">Sign Up</button>
+                </div>
+            </form>
+
+
+            <% } else { %>
+
+                <h1>Welcome, <%=username%>!</h1>
+                <div class="form-group">
+                    <form action="/logout" method="get">
+                        <button class="btn btn-primary my-1" type="submit">Log Out</button>
+                    </form>
+                    <form action="/members" method="get">
+                        <button class="btn btn-primary my-1" type="submit">Go to Members Page</button>
+                    </form>
+                </div>
+                <% } %>
+    </div>
+
+    <%- include("templates/footer"); %>

@@ -6,7 +6,7 @@ require("./utils.js");
 require('dotenv').config();
 const saltRounds = 12;
 
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 const MongoStore = require('connect-mongo');
 const express = require("express");
 const session = require('express-session');
@@ -15,17 +15,19 @@ app.use(express.json());
 const fs = require("fs");
 const Joi = require("joi");
 const bcrypt = require("bcrypt");
-
+const path = require("path");
 
 const port = process.env.PORT || 3000;
 
 
 const expireTime = 1 * 60 * 60 * 1000; // Equivilent to 1 hour. 
 
+app.set('view engine', 'ejs');
+
 // just like a simple web server like Apache web server
 // we are mapping file system paths to the app's virtual paths
 // app.use("/js", express.static("./public/js"));
-// app.use("/css", express.static("./public/css"));
+app.use('/css', express.static(path.join(__dirname, 'node_modules/bootstrap/dist/css')));
 app.use("/img", express.static("./public/img"));
 // app.use("/font", express.static("./public/font"));
 app.use(express.urlencoded({ extended: false }));
@@ -51,89 +53,31 @@ var mongoStore = MongoStore.create({
     }
 });
 
-
 app.use(session({
     secret: node_session_secret,
     store: mongoStore, //default is memory store 
     saveUninitialized: false,
     resave: true,
     cookie: { maxAge: expireTime }
-}))
+}));
+
+const navLinks = [
+    {name: 'Home', link: '/'},
+    {name: 'Members', link: '/members'},
+    {name: 'Admin', link: '/admin'}
+];
 
 app.get('/', (req, res) => {
-    if (!req.session.authenticated) {
-        res.send(`
-            <h1>The simplest Homepage</h1>
-            <form action="/login" method="get">
-                <button type="submit">Log In</button>
-            </form>
-            <form action="/createUser" method="get">
-                <button type="submit">Sign Up</button>
-            </form>
-        `);
-    } else {
-        res.send(`
-            <h1>Welcome, ${req.session.name}!</h1>
-            <form action="/logout" method="get">
-                <button type="submit">Log Out</button>
-            </form>
-            <form action="/members" method="get">
-                <button type="submit">Go to Members Page</button>
-            </form>
-        `);
-    }
+    res.render('index', {name: "Home", userAuth: req.session.authenticated, username: req.session.name, navLinks: navLinks});
 });
-
-app.get('/contact', (req, res) => {
-    var missingEmail = req.query.missing;
-    var html = `
-        email address:
-        <form action='/submitEmail' method='post'>
-            <input name='email' type='text' placeholder='email'>
-            <button>Submit</button>
-        </form>
-    `;
-    if (missingEmail) {
-        html += "<br> email is required";
-    }
-    res.send(html);
-});
-
-app.post('/submitEmail', (req, res) => {
-    var email = req.body.email;
-    if (!email) {
-        res.redirect('/contact?missing=1');
-    }
-    else {
-        res.send("Thanks for subscribing with your email: " + email);
-    }
-});
-
 
 app.get('/createUser', (req, res) => {
-    var html = `
-    Create Account
-    <form action='/submitUser' method='post'>
-    <input name='name' type='text' placeholder='Full Name'>
-    <input name='email' type='email' placeholder='Email'>
-    <input name='password' type='password' placeholder='Password'>
-    <button>Submit</button>
-    </form>
-    `;
-    res.send(html);
+    res.render('createUser', {name: "Create User", navLinks: navLinks});
 });
 
-
 app.get('/login', (req, res) => {
-    var html = `
-    log in
-    <form action='/loggingin' method='post'>
-    <input name='email' type='email' placeholder='Email' required>
-    <input name='password' type='password' placeholder='Password' required>
-    <button>Submit</button>
-    </form>
-    `;
-    res.send(html);
+    
+    res.render('login', {name: "Login", navLinks: navLinks});
 });
 
 app.post('/submitUser', async (req, res) => {
@@ -167,7 +111,6 @@ app.post('/submitUser', async (req, res) => {
     await userCollection.insertOne({ name, email, password: hashedPassword });
     console.log("User created successfully!");
 
-    // ✅ Set session after successful signup
     req.session.authenticated = true;
     req.session.name = name;
     req.session.cookie.maxAge = expireTime;
@@ -204,16 +147,7 @@ app.get('/members', (req, res) => {
     }
 
     const images = ['staffy1.jpg', 'staffy2.jpg', 'staffy3.jpg'];
-    const randomImage = images[Math.floor(Math.random() * images.length)];
-
-    const html = `
-        <h1>Hello, ${req.session.name}!</h1>
-        <img src="/img/${randomImage}" style="width:300px;">
-        <form action="/logout" method="get">
-            <button type="submit">Sign Out</button>
-        </form>
-    `;
-    res.send(html);
+    res.render('dogs', {name: `Member's Area`, dogs: images, navLinks: navLinks});
 });
 
 app.post('/loggingin', async (req, res) => {
@@ -227,17 +161,17 @@ app.post('/loggingin', async (req, res) => {
         return;
     }
 
-    const result = await userCollection.find({ email }).project({ name: 1, email: 1, password: 1 }).toArray();
+    const result = await userCollection.find({ email }).project({ name: 1, email: 1, password: 1, type: 1 }).toArray();
 
     if (result.length != 1 || !(await bcrypt.compare(password, result[0].password))) {
-        // If user is not found or password is incorrect, redirect to loginSubmit
         res.redirect('/loginSubmit');
         return;
     }
 
     console.log("correct password");
     req.session.authenticated = true;
-    req.session.name = result[0].name;  // Store user's name in session
+    req.session.name = result[0].name;
+    req.session.type = result[0].type; // Make sure type is set here
     req.session.cookie.maxAge = expireTime;
 
     res.redirect('/members');
@@ -256,10 +190,36 @@ app.get('/logout', (req, res) => {
     res.redirect('/');
 });
 
+// Middleware to protect admin routes
+function isAdmin(req, res, next) {
+    if (!req.session.authenticated) return res.redirect('login');
+    if (req.session.type !== 'admin') return res.status(403).send('Forbidden: Not authorized');
+    next();
+}
+
+// Admin page
+app.get('/admin', isAdmin, async (req, res) => {
+    const users = await userCollection.find().toArray();
+    res.render('admin', {name: "Administration", users, navLinks: navLinks });
+});
+
+// Promote user to admin
+app.post('/promote/:id', isAdmin, async (req, res) => {
+    await userCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { type: 'admin' } });
+    res.redirect('/admin');
+});
+
+// Demote user to regular user
+app.post('/demote/:id', isAdmin, async (req, res) => {
+    await userCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { type: 'user' } });
+    res.redirect('/admin');
+});
+
+
 // 404
 app.get("*", (req, res) => {
     res.status(404);
-    res.send("Page not found - 404");
+    res.render('404', {name: "404!", navLinks: navLinks});
 })
 
 
